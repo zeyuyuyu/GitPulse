@@ -1,42 +1,49 @@
 import os
-import git
-import torch
-from typing import Dict, List
-from .analyzers import CodeImpactAnalyzer, CollaborationAnalyzer
-from .models import CodeHealthModel, TeamFlowModel
+import time
+import logging
+import subprocess
 
-class GitPulse:
-    def __init__(self, repo_path: str):
-        self.repo = git.Repo(repo_path)
-        self.code_analyzer = CodeImpactAnalyzer()
-        self.collab_analyzer = CollaborationAnalyzer()
-        self.health_model = CodeHealthModel()
-        self.flow_model = TeamFlowModel()
+logging.basicConfig(level=logging.INFO)
 
-    def analyze_codebase(self) -> Dict:
-        """Perform comprehensive analysis of the codebase."""
-        commits = self.repo.iter_commits()
-        impact_metrics = self.code_analyzer.analyze_commits(commits)
-        collab_metrics = self.collab_analyzer.analyze_patterns(commits)
+def monitor_system_metrics():
+    """Continuously monitor system metrics and send alerts for critical thresholds."""
+    while True:
+        cpu_usage = get_cpu_usage()
+        mem_usage = get_memory_usage()
+        disk_usage = get_disk_usage()
         
-        health_score = self.health_model.predict(impact_metrics)
-        flow_insights = self.flow_model.analyze(collab_metrics)
+        if cpu_usage > 90:
+            send_alert(f"CPU usage critical at {cpu_usage}%")
+        if mem_usage > 85:
+            send_alert(f"Memory usage critical at {mem_usage}%")
+        if disk_usage > 90:
+            send_alert(f"Disk usage critical at {disk_usage}%")
         
-        return {
-            'health_score': health_score,
-            'impact_analysis': impact_metrics,
-            'collaboration_insights': collab_metrics,
-            'flow_patterns': flow_insights
-        }
+        time.sleep(60)  # Check metrics every minute
 
-    def monitor(self, realtime: bool = False):
-        """Start monitoring code changes in real-time."""
-        pass  # TODO: Implement real-time monitoring
+def get_cpu_usage():
+    """Get the current CPU usage percentage."""
+    output = subprocess.check_output(['top', '-bn1', '|', 'grep', 'Cpu(s)'])
+    cpu_usage = float(output.decode().split(',')[0].split()[1])
+    return cpu_usage
 
-def main():
-    pulse = GitPulse(os.getcwd())
-    analysis = pulse.analyze_codebase()
-    print(f"Code Health Score: {analysis['health_score']}")
+def get_memory_usage():
+    """Get the current memory usage percentage."""
+    output = subprocess.check_output(['free'])
+    mem_total = float(output.decode().split()[7])
+    mem_used = float(output.decode().split()[8])
+    mem_usage = (mem_used / mem_total) * 100
+    return mem_usage
 
-if __name__ == '__main__':
-    main()
+def get_disk_usage():
+    """Get the current disk usage percentage."""
+    disk_usage = shutil.disk_usage("/").percent
+    return disk_usage
+
+def send_alert(message):
+    """Send an alert notification for a critical system metric."""
+    logging.warning(message)
+    # Add integration with a monitoring/alerting service here
+
+if __name__ == "__main__":
+    monitor_system_metrics()
