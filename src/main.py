@@ -1,42 +1,69 @@
 import os
-import time
-import sys
-import psutil
-import subprocess
+import git
+import datetime
+import json
 
-def monitor_system():
-    """Continuously monitor system resources and optimize performance."""
-    while True:
-        # Get current CPU and memory usage
-        cpu_percent = psutil.cpu_percent(interval=1)
-        mem_percent = psutil.virtual_memory().percent
-        
-        # Check if resources are overloaded
-        if cpu_percent > 80 or mem_percent > 80:
-            # Optimize by scaling down non-critical processes
-            print(f"System resources overloaded. CPU: {cpu_percent}%, Memory: {mem_percent}%")
-            optimize_system()
-        
-        # Wait before checking again
-        time.sleep(5)
+class GitPulseCollaborator:
+    def __init__(self, name, email):
+        self.name = name
+        self.email = email
+        self.commits = []
 
-def optimize_system():
-    """Dynamically optimize system performance by scaling down non-critical processes."""
-    # Get list of running processes
-    processes = psutil.process_iter(['pid', 'name', 'cpu_percent', 'memory_percent'])
-    
-    # Sort processes by CPU and memory usage
-    processes = sorted(processes, key=lambda p: p.info['cpu_percent'] + p.info['memory_percent'], reverse=True)
-    
-    # Scale down non-critical processes
-    for process in processes:
-        if process.info['cpu_percent'] < 10 and process.info['memory_percent'] < 10:
-            continue
-        try:
-            process.suspend()
-            print(f"Suspended process: {process.info['name']}")
-        except (psutil.NoSuchProcess, psutil.AccessDenied):
-            pass
+class GitPulseProject:
+    def __init__(self, repo_path):
+        self.repo_path = repo_path
+        self.repo = git.Repo(repo_path)
+        self.collaborators = {}
 
-if __name__ == "__main__":
-    monitor_system()
+    def add_collaborator(self, name, email):
+        collaborator = GitPulseCollaborator(name, email)
+        self.collaborators[email] = collaborator
+
+    def commit_change(self, file_path, message, author):
+        commit = self.repo.index.commit(message, author=git.Actor(author.name, author.email))
+        author.commits.append(commit)
+
+    def get_commit_history(self):
+        commit_history = []
+        for commit in self.repo.iter_commits():
+            author = self.collaborators.get(commit.author.email, None)
+            if author:
+                commit_history.append({
+                    'hash': commit.hexsha,
+                    'message': commit.message,
+                    'author': author.name,
+                    'date': commit.committed_datetime.isoformat()
+                })
+        return commit_history
+
+    def save_state(self):
+        state = {
+            'collaborators': [{
+                'name': collaborator.name,
+                'email': collaborator.email,
+                'commits': [commit.hexsha for commit in collaborator.commits]
+            } for collaborator in self.collaborators.values()]
+        }
+        with open(os.path.join(self.repo_path, '.gitpulse'), 'w') as f:
+            json.dump(state, f)
+
+    def load_state(self):
+        state_file = os.path.join(self.repo_path, '.gitpulse')
+        if os.path.exists(state_file):
+            with open(state_file, 'r') as f:
+                state = json.load(f)
+                for collaborator_data in state['collaborators']:
+                    collaborator = GitPulseCollaborator(collaborator_data['name'], collaborator_data['email'])
+                    self.collaborators[collaborator_data['email']] = collaborator
+                    for commit_hash in collaborator_data['commits']:
+                        commit = self.repo.commit(commit_hash)
+                        collaborator.commits.append(commit)
+
+if __name__ == '__main__':
+    project = GitPulseProject('/path/to/repo')
+    project.add_collaborator('John Doe', 'john@example.com')
+    project.add_collaborator('Jane Smith', 'jane@example.com')
+    project.commit_change('src/main.py', 'feat: Added real-time collaboration', project.collaborators['john@example.com'])
+    project.commit_change('README.md', 'docs: Updated readme', project.collaborators['jane@example.com'])
+    print(project.get_commit_history())
+    project.save_state()
